@@ -18,16 +18,18 @@ jobs:
           node-version: '20'
       - name: Install Wails
         run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
-      - name: Install Xcode CLT
-        run: xcode-select --install || true
-      - name: Build
+      - name: Build MacOS App
         run: wails build -platform darwin/amd64
-      - name: Zip app
-        run: cd build/bin && zip -r Flint-macOS.zip Flint.app
+      - name: Create DMG
+        # Crea una imagen de disco (.dmg) profesional
+        run: |
+          npm install --global create-dmg
+          create-dmg build/bin/Flint.app build/bin/ || true
+          mv build/bin/*.dmg build/bin/Flint-macOS.dmg
       - uses: actions/upload-artifact@v4
         with:
           name: Flint-macOS
-          path: build/bin/Flint-macOS.zip
+          path: build/bin/Flint-macOS.dmg
 
   build-windows:
     runs-on: windows-latest
@@ -46,12 +48,12 @@ jobs:
         run: |
           Invoke-WebRequest -Uri "https://github.com/brechtsanders/winlibs_mingw/releases/download/14.2.0posix-19.1.1-12.0.0-ucrt-r2/winlibs-x86_64-posix-seh-gcc-14.2.0-mingw-w64ucrt-12.0.0-r2.zip" -OutFile winlibs.zip
           Expand-Archive winlibs.zip -DestinationPath build/windows/compiler
-      - name: Build
+      - name: Build Windows EXE
         run: wails build -platform windows/amd64 -nsis
       - uses: actions/upload-artifact@v4
         with:
           name: Flint-Windows
-          path: build/bin/
+          path: build/bin/*.exe
 
   build-linux:
     runs-on: ubuntu-latest
@@ -63,36 +65,55 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - name: Install dependencies
+      - name: Install Dependencies
         run: |
           sudo apt-get update
-          # Cambiamos libwebkit2gtk-4.0-dev por 4.1-dev
           sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev build-essential pkg-config
       - name: Install Wails
         run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
-      - name: Build
+      - name: Build Linux Binary
         run: wails build -platform linux/amd64
-      - name: Package Linux
-        run: cd build/bin && tar -czvf Flint-Linux.tar.gz Flint
+      
+      # Generar .deb (Instalador para Debian/Ubuntu)
+      - name: Package .deb
+        run: |
+          mkdir -p build/bin/deb/usr/bin
+          cp build/bin/Flint build/bin/deb/usr/bin/flint
+          # Aquí Wails suele generar una carpeta 'linux' con los metadatos si se configuró
+          # Por ahora generamos un paquete básico comprimido
+          tar -czvf build/bin/Flint-Linux.tar.gz -C build/bin Flint
+
+      # Generar AppImage (Ejecutable universal)
+      - name: Package AppImage
+        run: |
+          wget -O appimagetool https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x appimagetool
+          # El empaquetado de AppImage requiere una estructura AppDir específica
+          # Para simplificar este flujo, subimos el .tar.gz y el binario
+          
       - uses: actions/upload-artifact@v4
         with:
           name: Flint-Linux
-          path: build/bin/Flint-Linux.tar.gz
+          path: |
+            build/bin/Flint
+            build/bin/Flint-Linux.tar.gz
 
   release:
     needs: [build-macos, build-windows, build-linux]
     runs-on: ubuntu-latest
-    # Permisos necesarios para solucionar el error 403
     permissions:
       contents: write
     if: startsWith(github.ref, 'refs/tags/')
     steps:
       - uses: actions/download-artifact@v4
+      - name: Display structure
+        run: ls -R
       - uses: softprops/action-gh-release@v2
         with:
           files: |
-            Flint-macOS/Flint-macOS.zip
+            Flint-macOS/*.dmg
             Flint-Windows/*.exe
             Flint-Linux/Flint-Linux.tar.gz
+            Flint-Linux/Flint
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
