@@ -21,7 +21,6 @@ jobs:
       - name: Build MacOS App
         run: wails build -platform darwin/amd64
       - name: Create DMG
-        # Crea una imagen de disco (.dmg) profesional
         run: |
           npm install --global create-dmg
           create-dmg build/bin/Flint.app build/bin/ || true
@@ -56,7 +55,8 @@ jobs:
           path: build/bin/*.exe
 
   build-linux:
-    runs-on: ubuntu-latest
+    # CAMBIO CLAVE: Usamos 22.04 para recuperar la librería 4.0 y mayor compatibilidad de glibc
+    runs-on: ubuntu-22.04 
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -68,35 +68,22 @@ jobs:
       - name: Install Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev build-essential pkg-config
+          # En Ubuntu 22.04, la 4.0 SÍ existe y es la que Wails espera
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.0-dev build-essential pkg-config
       - name: Install Wails
         run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
-      - name: Build Linux Binary
+      - name: Build Linux
         run: wails build -platform linux/amd64
-      
-      # Generar .deb (Instalador para Debian/Ubuntu)
-      - name: Package .deb
+      - name: Package Linux
         run: |
-          mkdir -p build/bin/deb/usr/bin
-          cp build/bin/Flint build/bin/deb/usr/bin/flint
-          # Aquí Wails suele generar una carpeta 'linux' con los metadatos si se configuró
-          # Por ahora generamos un paquete básico comprimido
-          tar -czvf build/bin/Flint-Linux.tar.gz -C build/bin Flint
-
-      # Generar AppImage (Ejecutable universal)
-      - name: Package AppImage
-        run: |
-          wget -O appimagetool https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
-          chmod +x appimagetool
-          # El empaquetado de AppImage requiere una estructura AppDir específica
-          # Para simplificar este flujo, subimos el .tar.gz y el binario
-          
+          cd build/bin
+          tar -czvf Flint-Linux-Portable.tar.gz Flint
       - uses: actions/upload-artifact@v4
         with:
           name: Flint-Linux
           path: |
             build/bin/Flint
-            build/bin/Flint-Linux.tar.gz
+            build/bin/Flint-Linux-Portable.tar.gz
 
   release:
     needs: [build-macos, build-windows, build-linux]
@@ -106,14 +93,12 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/')
     steps:
       - uses: actions/download-artifact@v4
-      - name: Display structure
-        run: ls -R
       - uses: softprops/action-gh-release@v2
         with:
           files: |
             Flint-macOS/*.dmg
             Flint-Windows/*.exe
-            Flint-Linux/Flint-Linux.tar.gz
+            Flint-Linux/Flint-Linux-Portable.tar.gz
             Flint-Linux/Flint
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
