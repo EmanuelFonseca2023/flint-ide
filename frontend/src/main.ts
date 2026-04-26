@@ -274,21 +274,21 @@ style.textContent = `.monaco-error-line {
 document.head.appendChild(style)
 
 // ── Resizers ──────────────────────────────────────────────────────────────────
+// ── Resizers ──────────────────────────────────────────────────────────────────
 function initResizers() {
   const resizerH   = document.getElementById('resizer-h')!
-  const editorPane = document.getElementById('editor-pane')!
+  const rightPane  = document.querySelector('.right-pane') as HTMLElement
 
   resizerH.addEventListener('mousedown', (e) => {
     e.preventDefault()
     resizerH.classList.add('dragging')
-    const startX     = e.clientX
-    const startWidth = editorPane.offsetWidth
+    const startX      = e.clientX
+    const startWidth  = rightPane.offsetWidth
 
     const onMove = (e: MouseEvent) => {
-      const totalWidth = (editorPane.parentElement as HTMLElement).offsetWidth
-      const delta      = e.clientX - startX
-      const newWidth   = Math.max(200, Math.min(startWidth + delta, totalWidth - 200))
-      editorPane.style.flex = `0 0 ${newWidth}px`
+      const delta    = startX - e.clientX
+      const newWidth = Math.max(180, Math.min(startWidth + delta, window.innerWidth * 0.6))
+      rightPane.style.flex = `0 0 ${newWidth}px`
     }
     const onUp = () => {
       resizerH.classList.remove('dragging')
@@ -300,8 +300,10 @@ function initResizers() {
   })
 
   window.addEventListener('resize', () => {
-    editorPane.style.flex = '1'
-    editorPane.style.width = ''
+    const maxW = window.innerWidth * 0.6
+    if (rightPane.offsetWidth > maxW) {
+      rightPane.style.flex = `0 0 ${maxW}px`
+    }
   })
 
   const resizerV = document.getElementById('resizer-v')!

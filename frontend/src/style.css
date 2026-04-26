@@ -121,19 +121,19 @@ html, body {
 }
 
 .editor-pane {
-  flex: 1;
-  min-width: 200px;
+  flex: 1 1 auto;
+  min-width: 0;         /* ← clave para que flexbox no desborde */
   overflow: hidden;
   border-right: 0.5px solid #2a2a2a;
 }
 
 .right-pane {
-  width: 300px;
+  flex: 0 0 320px;      /* ← ancho fijo, no flex */
   min-width: 180px;
-  max-width: 600px;
+  max-width: 60vw;
   display: flex;
   flex-direction: column;
-  flex-shrink: 0;
+  overflow: hidden;
 }
 
 .panel {
