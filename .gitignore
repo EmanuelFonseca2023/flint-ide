@@ -1,0 +1,21 @@
+# Wails build output
+build/bin/
+
+# Go
+*.exe
+*.test
+*.out
+
+# Frontend
+frontend/dist/
+frontend/node_modules/
+
+# Temp files de Flint
+flint-*/
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/

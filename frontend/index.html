@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Flint</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div class="ide">
+
+      <div class="toolbar">
+        <span class="file-name" id="status-filename">main.cpp</span>
+        <div class="dot-modified" id="dot-modified"></div>
+        <button class="btn btn-icon" id="btn-open" title="Abrir">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+        </button>
+        <button class="btn btn-icon" id="btn-save" title="Guardar">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+        </button>
+        <div class="toolbar-sep"></div>
+        <button class="btn btn-primary" id="btn-run">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          Compilar y Ejecutar
+        </button>
+        <div class="compiler-badge">
+          <div class="compiler-dot" id="compiler-dot"></div>
+          <span class="compiler-label" id="compiler-label">Detectando compilador...</span>
+        </div>
+      </div>
+
+      <div class="main-area">
+        <div class="editor-pane" id="editor-pane"></div>
+        <div class="resizer" id="resizer-h"></div>        <!-- ← agregar -->
+        <div class="right-pane">
+          <div class="panel io-panel">
+            <div class="panel-header">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
+              <span class="panel-title">Salida</span>
+              <button class="btn-clear" id="btn-clear-output" title="Limpiar">✕</button>
+            </div>
+            <div class="panel-body">
+              <pre class="io-output" id="io-output"></pre>
+              <div class="io-input-row" id="io-input-row" style="display:none">
+                <span class="io-prompt">›</span>
+                <input class="io-input" id="io-input" type="text" autocomplete="off" spellcheck="false" />
+              </div>
+            </div>
+          </div>
+          <div class="resizer-v" id="resizer-v"></div>    <!-- ← agregar -->
+          <div class="panel err-panel" id="err-panel">
+            <div class="panel-header">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#E86C2C" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+              <span class="panel-title">Errores</span>
+              <span class="err-count" id="err-count" style="display:none">0</span>
+            </div>
+            <div class="panel-body" id="err-list"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="statusbar">
+        <span class="status-item" id="status-lang">C++17</span>
+        <span class="status-sep">·</span>
+        <span class="status-item" id="status-cursor">Línea 1, Col 1</span>
+        <span class="status-sep" id="status-sep-err" style="display:none">·</span>
+        <span class="status-item" id="status-errors" style="display:none"></span>
+        <span class="status-right">Flint v1.0</span>
+      </div>
+
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

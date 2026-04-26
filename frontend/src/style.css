@@ -1,0 +1,325 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  height: 100%;
+  overflow: hidden;
+  background: #1a1a1a;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+.ide {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: #1a1a1a;
+  color: #ccc;
+}
+
+/* ── Toolbar ─────────────────────────────── */
+.toolbar {
+  height: 44px;
+  background: #1e1e1e;
+  border-bottom: 0.5px solid #2a2a2a;
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  gap: 8px;
+  flex-shrink: 0;
+  -webkit-app-region: drag;
+}
+
+.toolbar > * { -webkit-app-region: no-drag; }
+
+.file-name {
+  font-size: 13px;
+  color: #aaa;
+}
+
+.dot-modified {
+  width: 7px;
+  height: 7px;
+  background: #555;
+  border-radius: 50%;
+  margin-right: auto;
+  transition: background 0.2s;
+}
+
+.dot-modified.unsaved { background: #E86C2C; }
+
+.toolbar-sep {
+  width: 1px;
+  height: 20px;
+  background: #333;
+  margin: 0 2px;
+}
+
+.btn {
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 6px;
+  border: 0.5px solid #3a3a3a;
+  background: #2a2a2a;
+  color: #ccc;
+  font-size: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+
+.btn:hover { background: #333; }
+
+.btn-icon {
+  width: 28px;
+  padding: 0;
+  justify-content: center;
+}
+
+.btn-primary {
+  background: #E86C2C;
+  border-color: #E86C2C;
+  color: #fff;
+  font-weight: 500;
+  padding: 0 16px;
+}
+
+.btn-primary:hover { background: #d4601f; }
+
+.btn-primary:active { transform: scale(0.97); }
+
+.compiler-badge {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.compiler-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #555;
+  transition: background 0.3s;
+}
+
+.compiler-dot.ready { background: #28C840; }
+.compiler-dot.error { background: #E84C2C; }
+
+.compiler-label {
+  font-size: 11px;
+  color: #555;
+}
+
+/* ── Main area ───────────────────────────── */
+.main-area {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.editor-pane {
+  flex: 1;
+  min-width: 200px;
+  overflow: hidden;
+  border-right: 0.5px solid #2a2a2a;
+}
+
+.right-pane {
+  width: 300px;
+  min-width: 180px;
+  max-width: 600px;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.io-panel { flex: 1; border-bottom: 0.5px solid #2a2a2a; }
+.err-panel { height: 200px; flex-shrink: 0; }
+
+.panel-header {
+  height: 34px;
+  background: #1e1e1e;
+  border-bottom: 0.5px solid #2a2a2a;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.panel-title {
+  font-size: 11px;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 500;
+}
+
+.btn-clear {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: #555;
+  font-size: 11px;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 3px;
+}
+
+.btn-clear:hover { color: #999; background: #2a2a2a; }
+
+.err-count {
+  margin-left: auto;
+  background: rgba(232,108,44,0.15);
+  color: #E86C2C;
+  font-size: 11px;
+  padding: 1px 7px;
+  border-radius: 10px;
+}
+
+.panel-body {
+  flex: 1;
+  padding: 10px 12px;
+  overflow-y: auto;
+}
+
+/* ── I/O panel ───────────────────────────── */
+.io-output {
+  font-family: 'Menlo', 'Consolas', monospace;
+  font-size: 12px;
+  color: #aaa;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.io-input-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.io-prompt {
+  font-family: monospace;
+  font-size: 13px;
+  color: #E86C2C;
+  flex-shrink: 0;
+}
+
+.io-input {
+  flex: 1;
+  background: none;
+  border: none;
+  outline: none;
+  font-family: 'Menlo', 'Consolas', monospace;
+  font-size: 12px;
+  color: #E86C2C;
+  caret-color: #E86C2C;
+}
+
+/* ── Error panel ─────────────────────────── */
+.err-item {
+  display: flex;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 0.5px solid #252525;
+  cursor: pointer;
+}
+
+.err-item:last-child { border-bottom: none; }
+.err-item:hover { opacity: 0.85; }
+
+.err-line-badge {
+  background: rgba(232,108,44,0.15);
+  color: #E86C2C;
+  font-size: 11px;
+  font-family: monospace;
+  padding: 1px 6px;
+  border-radius: 4px;
+  height: fit-content;
+  white-space: nowrap;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.err-msg {
+  font-size: 12px;
+  color: #ccc;
+  line-height: 1.5;
+}
+
+.err-hint {
+  font-size: 11px;
+  color: #555;
+  margin-top: 2px;
+  font-family: monospace;
+}
+
+.no-errors {
+  font-size: 12px;
+  color: #444;
+  padding: 8px 0;
+}
+
+/* ── Statusbar ───────────────────────────── */
+.statusbar {
+  background: #E86C2C;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.status-item {
+  font-size: 11px;
+  color: rgba(255,255,255,0.85);
+}
+
+.status-sep {
+  font-size: 11px;
+  color: rgba(255,255,255,0.3);
+}
+
+.status-right {
+  margin-left: auto;
+  font-size: 11px;
+  color: rgba(255,255,255,0.6);
+}
+
+/* ── Scrollbars ──────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #444; }
+
+/* ── Resizer ─────────────────────────────── */
+.resizer {
+  width: 4px;
+  background: #2a2a2a;
+  cursor: col-resize;
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+.resizer:hover, .resizer.dragging { background: #E86C2C; }
+
+/* ── Vertical resizer (entre salida y errores) ── */
+.resizer-v {
+  height: 4px;
+  background: #2a2a2a;
+  cursor: row-resize;
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+.resizer-v:hover, .resizer-v.dragging { background: #E86C2C; }
