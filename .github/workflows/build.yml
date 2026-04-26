@@ -1,4 +1,4 @@
-name: Build Flint
+name: Build Flint Release
 
 on:
   push:
@@ -7,7 +7,12 @@ on:
 
 jobs:
   build-macos:
+    name: Build macOS (${{ matrix.arch }})
     runs-on: macos-latest
+    strategy:
+      matrix:
+        # Compilamos para Intel (amd64) y Apple Silicon (arm64)
+        arch: [amd64, arm64]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -16,21 +21,33 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
+          
       - name: Install Wails
         run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+        
       - name: Build MacOS App
-        run: wails build -platform darwin/amd64 -o Flint # Forzamos nombre
+        run: wails build -platform darwin/${{ matrix.arch }} -o Flint
+        
+      - name: Create tar.gz
+        run: |
+          cd build/bin
+          tar -czvf Flint-macOS-${{ matrix.arch }}.app.tar.gz Flint.app
+          
       - name: Create DMG
         run: |
           npm install --global create-dmg
           create-dmg build/bin/Flint.app build/bin/ || true
-          mv build/bin/*.dmg build/bin/Flint-macOS.dmg
+          mv build/bin/*.dmg build/bin/Flint-macOS-${{ matrix.arch }}.dmg
+          
       - uses: actions/upload-artifact@v4
         with:
-          name: Flint-macOS
-          path: build/bin/Flint-macOS.dmg
+          name: Flint-macOS-${{ matrix.arch }}
+          path: |
+            build/bin/Flint-macOS-*.dmg
+            build/bin/Flint-macOS-*.tar.gz
 
   build-windows:
+    name: Build Windows (x64)
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -40,21 +57,27 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
+          
       - name: Install Wails
         run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+        
       - name: Download WinLibs
         shell: pwsh
         run: |
           Invoke-WebRequest -Uri "https://github.com/brechtsanders/winlibs_mingw/releases/download/14.2.0posix-19.1.1-12.0.0-ucrt-r2/winlibs-x86_64-posix-seh-gcc-14.2.0-mingw-w64ucrt-12.0.0-r2.zip" -OutFile winlibs.zip
           Expand-Archive winlibs.zip -DestinationPath build/windows/compiler
-      - name: Build Windows EXE
-        run: wails build -platform windows/amd64 -nsis -o Flint.exe # Forzamos nombre
+          
+      - name: Build Windows EXE & NSIS Installer
+        # El flag -nsis generará un ejecutable instalable (tipo setup)
+        run: wails build -platform windows/amd64 -nsis -o Flint.exe
+        
       - uses: actions/upload-artifact@v4
         with:
           name: Flint-Windows
           path: build/bin/*.exe
 
   build-linux:
+    name: Build Linux (x64)
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
@@ -64,42 +87,66 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - name: Install Dependencies
+          
+      - name: Install Dependencies & FPM
         run: |
           sudo apt-get update
           sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.0-dev build-essential pkg-config
+          sudo apt-get install -y ruby ruby-dev rubygems
+          sudo gem install fpm
+          
       - name: Install Wails
         run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
-      - name: Build Linux
-        # Usamos -o Flint para asegurar que el archivo se llame exactamente así
+        
+      - name: Build Linux Binary
         run: wails build -platform linux/amd64 -o Flint
-      - name: Package Linux
+        
+      - name: Get Version
+        id: get_version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+        
+      - name: Package Linux (tar.gz, deb, rpm)
         run: |
           cd build/bin
-          # Esto nos servirá para ver si Wails creó algo más en caso de error
-          ls -la 
-          tar -czvf Flint-Linux-Portable.tar.gz Flint
+          # 1. Tarball portátil
+          tar -czvf Flint-Linux-x64-Portable.tar.gz Flint
+          
+          # 2. Empaquetar DEB
+          fpm -s dir -t deb -n flint -v ${{ steps.get_version.outputs.VERSION }} --prefix /usr/local/bin Flint
+          
+          # 3. Empaquetar RPM
+          fpm -s dir -t rpm -n flint -v ${{ steps.get_version.outputs.VERSION }} --prefix /usr/local/bin Flint
+          
       - uses: actions/upload-artifact@v4
         with:
           name: Flint-Linux
           path: |
-            build/bin/Flint
-            build/bin/Flint-Linux-Portable.tar.gz
+            build/bin/*.tar.gz
+            build/bin/*.deb
+            build/bin/*.rpm
 
   release:
+    name: Publish GitHub Release
     needs: [build-macos, build-windows, build-linux]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     if: startsWith(github.ref, 'refs/tags/')
     steps:
-      - uses: actions/download-artifact@v4
-      - uses: softprops/action-gh-release@v2
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
         with:
-          files: |
-            Flint-macOS/*.dmg
-            Flint-Windows/*.exe
-            Flint-Linux/Flint-Linux-Portable.tar.gz
-            Flint-Linux/Flint
+          path: artifacts
+
+      - name: Flatten directory structure
+        run: |
+          mkdir -p release_assets
+          find artifacts -type f -exec mv {} release_assets/ \;
+          
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release_assets/*
+          generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
