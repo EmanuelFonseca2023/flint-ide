@@ -7,7 +7,6 @@ import (
 	"os"
 	"os/exec"
 	"sync"
-	"syscall"
 )
 
 type Runner struct {
@@ -29,7 +28,7 @@ func StartProcess(binPath string, onOutput func(IOEvent)) (*Runner, error) {
 	cmd := exec.CommandContext(ctx, binPath)
 
 	// Nuevo process group para poder matar hijos también
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	setSysProcAttr(cmd)
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
@@ -123,13 +122,7 @@ func (r *Runner) Kill() {
 	defer r.mu.Unlock()
 
 	if r.cmd != nil && r.cmd.Process != nil {
-		// Matar el process group completo (incluye procesos hijos)
-		pgid, err := syscall.Getpgid(r.cmd.Process.Pid)
-		if err == nil {
-			syscall.Kill(-pgid, syscall.SIGKILL)
-		} else {
-			r.cmd.Process.Kill()
-		}
+		killProcess(r.cmd.Process.Pid)
 	}
 	r.cancelFn()
 }
