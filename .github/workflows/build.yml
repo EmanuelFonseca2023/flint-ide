@@ -50,9 +50,11 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+      
       - uses: actions/setup-go@v5
         with:
           go-version: '1.21'
+          
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -60,33 +62,34 @@ jobs:
       - name: Install Wails
         run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
 
+      - name: Install NSIS
+        run: choco install nsis -y
+
       - name: Download & Extract WinLibs
         shell: pwsh
         run: |
           Invoke-WebRequest `
             -Uri "https://github.com/brechtsanders/winlibs_mingw/releases/download/14.2.0posix-19.1.1-12.0.0-ucrt-r2/winlibs-x86_64-posix-seh-gcc-14.2.0-mingw-w64ucrt-12.0.0-r2.zip" `
             -OutFile winlibs.zip
-          # Extraer dentro de build/bin/compiler para que quede
-          # junto al ejecutable de Flint y detector.go lo encuentre
+          # Extraer dentro de build/bin/compiler
           New-Item -ItemType Directory -Force -Path build/bin/compiler
           Expand-Archive winlibs.zip -DestinationPath build/bin/compiler
 
-      - name: Build Windows EXE + NSIS Installer
-        run: wails build -platform windows/amd64 -nsis -o Flint.exe
-
-      - name: Add WinLibs to NSIS installer
+      - name: Add WinLibs to NSIS template
         shell: pwsh
         run: |
-          # Insertar la línea que copia compiler/ dentro del instalador generado por Wails
+          # Modificar el template de NSIS antes de que Wails haga el build
           $nsiPath = "build/windows/installer/project.nsi"
           $content  = Get-Content $nsiPath -Raw
+          
           # Buscar el bloque de instalación y añadir el compilador después del exe
           $inject = "`r`n  ; WinLibs (compilador bundleado)`r`n  SetOutPath `"`$INSTDIR\compiler`"`r`n  File /r `"`${BUILD_DIR}\compiler\*`"`r`n"
           $content  = $content -replace '(File "\${BUILD_DIR}\\[^"]+\.exe")', "`$1$inject"
+          
           Set-Content $nsiPath $content
-          # Re-compilar el installer con NSIS
-          choco install nsis -y
-          & "C:\Program Files (x86)\NSIS\makensis.exe" build/windows/installer/project.nsi
+
+      - name: Build Windows EXE + NSIS Installer
+        run: wails build -platform windows/amd64 -nsis -o Flint.exe
 
       - uses: actions/upload-artifact@v4
         with:
