@@ -1,9 +1,12 @@
-name: Build Flint (MSI + Crossplatform)
+name: Build Flint (Stable CI)
 
 on:
   push:
     tags:
       - 'v*'
+
+permissions:
+  contents: write
 
 jobs:
   build-windows:
@@ -20,86 +23,62 @@ jobs:
         with:
           node-version: '20'
 
-      - run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+      - name: Install Wails
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
 
-      - run: choco install wixtoolset -y
+      - name: Install WiX
+        run: choco install wixtoolset -y
 
       - name: Download WinLibs
         run: |
-          curl -L -o winlibs.zip https://github.com/brechtsanders/winlibs_mingw/releases/download/15.2.0posix-14.0.0-ucrt-r7/winlibs-x86_64-posix-seh-gcc-15.2.0-llvm-14.0.0-mingw-w64ucrt-12.0.0-r7.zip
+          curl -L -o winlibs.zip https://github.com/brechtsanders/winlibs_mingw/releases/latest/download/winlibs-x86_64-posix-seh-gcc.zip
           powershell -Command "Expand-Archive winlibs.zip -DestinationPath build/bin/compiler"
 
-      - name: Flatten compiler
+      - name: Normalize toolchain
+        shell: powershell
         run: |
-          move build\bin\compiler\mingw64 build\bin\compiler\toolchain
+          $folder = Get-ChildItem build\bin\compiler | Where-Object { $_.PSIsContainer } | Select-Object -First 1
+          Move-Item $folder.FullName build\bin\compiler\toolchain
 
-      - name: Build Wails App
+      - name: Build app
         run: wails build -platform windows/amd64 -o Flint.exe
 
-      - name: Prepare MSI structure
+      - name: Prepare MSI files
         run: |
           mkdir dist
-          xcopy build\bin\Flint.exe dist\ /Y
-          xcopy build\bin\compiler\toolchain\bin dist\compiler\bin\ /E /I /Y
+          xcopy build\\bin\\Flint.exe dist\\ /Y
+          xcopy build\\bin\\compiler\\toolchain dist\\compiler\\ /E /I /Y
 
-      - name: Generate file list for WiX
-        run: |
-          dir dist\compiler\bin /b > files.txt
-
-      - name: Create WiX source
+      - name: Create WiX file
         run: |
           echo ^<?xml version="1.0" encoding="UTF-8"?^> > installer.wxs
           echo ^<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi"^> >> installer.wxs
-          echo   ^<Product Id="*" Name="Flint" Language="1033" Version="1.0.0" Manufacturer="Flint" UpgradeCode="EEE4B5AC-3E88-4109-9B1E-10C81E08AAEB"^> >> installer.wxs
-          echo     ^<Package InstallerVersion="500" Compressed="yes" InstallScope="perMachine" /^> >> installer.wxs
-          echo     ^<MediaTemplate /^> >> installer.wxs
+          echo ^<Product Id="*" Name="Flint" Language="1033" Version="1.2.5" Manufacturer="Flint" UpgradeCode="12345678-1234-1234-1234-123456789012"^> >> installer.wxs
+          echo ^<Package InstallerVersion="500" Compressed="yes" InstallScope="perMachine" /^> >> installer.wxs
+          echo ^<MediaTemplate /^> >> installer.wxs
 
-          echo     ^<Feature Id="MainFeature" Title="Flint" Level="1"^> >> installer.wxs
-          echo       ^<ComponentGroupRef Id="AppFiles" /^> >> installer.wxs
-          echo     ^</Feature^> >> installer.wxs
+          echo ^<Directory Id="TARGETDIR" Name="SourceDir"^> >> installer.wxs
+          echo ^<Directory Id="ProgramFilesFolder"^> >> installer.wxs
+          echo ^<Directory Id="INSTALLDIR" Name="Flint" /^> >> installer.wxs
+          echo ^</Directory^> >> installer.wxs
+          echo ^</Directory^> >> installer.wxs
 
-          echo     ^<Directory Id="TARGETDIR" Name="SourceDir"^> >> installer.wxs
-          echo       ^<Directory Id="ProgramFilesFolder"^> >> installer.wxs
-          echo         ^<Directory Id="INSTALLDIR" Name="Flint"^> >> installer.wxs
-          echo           ^<Directory Id="COMPILERDIR" Name="compiler"^> >> installer.wxs
-          echo             ^<Directory Id="BINDIR" Name="bin" /^> >> installer.wxs
-          echo           ^</Directory^> >> installer.wxs
-          echo         ^</Directory^> >> installer.wxs
-          echo       ^</Directory^> >> installer.wxs
-          echo     ^</Directory^> >> installer.wxs
+          echo ^<DirectoryRef Id="INSTALLDIR"^> >> installer.wxs
+          echo ^<Component Id="MainExe" Guid="*"^> >> installer.wxs
+          echo ^<File Source="dist\\Flint.exe" /^> >> installer.wxs
+          echo ^</Component^> >> installer.wxs
 
-          echo     ^<DirectoryRef Id="INSTALLDIR"^> >> installer.wxs
-          echo       ^<Component Id="MainExe" Guid="*"^> >> installer.wxs
-          echo         ^<File Source="dist\\Flint.exe" /^> >> installer.wxs
-          echo       ^</Component^> >> installer.wxs
-          echo     ^</DirectoryRef^> >> installer.wxs
+          echo ^<Component Id="EnvPath" Guid="*"^> >> installer.wxs
+          echo ^<Environment Id="PATH_VAR" Name="PATH" Value="[INSTALLDIR]compiler" Permanent="no" Part="last" Action="set" /^> >> installer.wxs
+          echo ^</Component^> >> installer.wxs
+          echo ^</DirectoryRef^> >> installer.wxs
 
-          echo     ^<DirectoryRef Id="BINDIR"^> >> installer.wxs
+          echo ^<Feature Id="MainFeature" Level="1"^> >> installer.wxs
+          echo ^<ComponentRef Id="MainExe" /^> >> installer.wxs
+          echo ^<ComponentRef Id="EnvPath" /^> >> installer.wxs
+          echo ^</Feature^> >> installer.wxs
 
-          for /f %%i in (files.txt) do (
-            echo       ^<Component Id="cmp_%%~ni" Guid="*"^> >> installer.wxs
-            echo         ^<File Source="dist\\compiler\\bin\\%%i" /^> >> installer.wxs
-            echo       ^</Component^> >> installer.wxs
-          )
-
-          echo     ^</DirectoryRef^> >> installer.wxs
-
-          echo     ^<ComponentGroup Id="AppFiles"^> >> installer.wxs
-          echo       ^<ComponentRef Id="MainExe" /^> >> installer.wxs
-
-          for /f %%i in (files.txt) do (
-            echo       ^<ComponentRef Id="cmp_%%~ni" /^> >> installer.wxs
-          )
-
-          echo     ^</ComponentGroup^> >> installer.wxs
-
-          echo     ^<DirectoryRef Id="INSTALLDIR"^> >> installer.wxs
-          echo       ^<Component Id="EnvPath" Guid="*"^> >> installer.wxs
-          echo         ^<Environment Id="PATH_VAR" Name="PATH" Value="[INSTALLDIR]compiler\\bin" Permanent="no" Part="last" Action="set" /^> >> installer.wxs
-          echo       ^</Component^> >> installer.wxs
-          echo     ^</DirectoryRef^> >> installer.wxs
-
-          echo   ^</Product^> >> installer.wxs
+          echo ^</Product^> >> installer.wxs
           echo ^</Wix^> >> installer.wxs
 
       - name: Build MSI
@@ -107,9 +86,12 @@ jobs:
           candle installer.wxs
           light installer.wixobj -o Flint.msi
 
-      - uses: softprops/action-gh-release@v2
+      - name: Upload Windows artifacts
+        uses: softprops/action-gh-release@v2
         with:
-          files: Flint.msi
+          files: |
+            Flint.msi
+            build/bin/Flint.exe
 
   build-linux:
     runs-on: ubuntu-latest
@@ -125,11 +107,23 @@ jobs:
         with:
           node-version: '20'
 
-      - run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+      - name: Install deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgtk-3-dev \
+            libwebkit2gtk-4.0-dev \
+            libglib2.0-dev \
+            build-essential
 
-      - run: wails build -platform linux/amd64
+      - name: Install Wails
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
 
-      - uses: softprops/action-gh-release@v2
+      - name: Build Linux
+        run: wails build -platform linux/amd64
+
+      - name: Upload Linux
+        uses: softprops/action-gh-release@v2
         with:
           files: build/bin/*
 
@@ -147,10 +141,13 @@ jobs:
         with:
           node-version: '20'
 
-      - run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+      - name: Install Wails
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
 
-      - run: wails build -platform darwin/universal
+      - name: Build macOS
+        run: wails build -platform darwin/universal
 
-      - uses: softprops/action-gh-release@v2
+      - name: Upload macOS
+        uses: softprops/action-gh-release@v2
         with:
           files: build/bin/*
