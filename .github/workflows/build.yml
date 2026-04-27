@@ -1,4 +1,4 @@
-name: Build Flint Release
+name: Build Flint (MSI + Crossplatform)
 
 on:
   push:
@@ -6,168 +6,151 @@ on:
       - 'v*'
 
 jobs:
-  build-macos:
-    name: Build macOS (${{ matrix.arch }})
-    runs-on: macos-latest
-    strategy:
-      matrix:
-        arch: [amd64, arm64]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '1.21'
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Install Wails
-        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
-
-      - name: Build macOS App
-        run: wails build -platform darwin/${{ matrix.arch }} -o Flint
-
-      - name: Create tar.gz
-        run: |
-          cd build/bin
-          tar -czvf Flint-macOS-${{ matrix.arch }}.app.tar.gz Flint.app
-
-      - name: Create DMG
-        run: |
-          npm install --global create-dmg
-          create-dmg build/bin/Flint.app build/bin/ || true
-          mv build/bin/*.dmg build/bin/Flint-macOS-${{ matrix.arch }}.dmg
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: Flint-macOS-${{ matrix.arch }}
-          path: |
-            build/bin/Flint-macOS-*.dmg
-            build/bin/Flint-macOS-*.tar.gz
-
   build-windows:
-    name: Build Windows (x64)
     runs-on: windows-latest
+
     steps:
       - uses: actions/checkout@v4
-      
+
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.21'
-          
+          go-version: '1.23'
+
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      - name: Install Wails
-        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+      - run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
 
-      - name: Install NSIS
-        run: choco install nsis -y
+      - run: choco install wixtoolset -y
 
-      - name: Download & Extract WinLibs
-        shell: pwsh
+      - name: Download WinLibs
         run: |
-          Invoke-WebRequest `
-            -Uri "https://github.com/brechtsanders/winlibs_mingw/releases/download/14.2.0posix-19.1.1-12.0.0-ucrt-r2/winlibs-x86_64-posix-seh-gcc-14.2.0-mingw-w64ucrt-12.0.0-r2.zip" `
-            -OutFile winlibs.zip
-          # Extraer dentro de build/bin/compiler
-          New-Item -ItemType Directory -Force -Path build/bin/compiler
-          Expand-Archive winlibs.zip -DestinationPath build/bin/compiler
+          curl -L -o winlibs.zip https://github.com/brechtsanders/winlibs_mingw/releases/download/15.2.0posix-14.0.0-ucrt-r7/winlibs-x86_64-posix-seh-gcc-15.2.0-llvm-14.0.0-mingw-w64ucrt-12.0.0-r7.zip
+          powershell -Command "Expand-Archive winlibs.zip -DestinationPath build/bin/compiler"
 
-      - name: Add WinLibs to NSIS template
-        shell: pwsh
+      - name: Flatten compiler
         run: |
-          # Modificar el template de NSIS antes de que Wails haga el build
-          $nsiPath = "build/windows/installer/project.nsi"
-          $content  = Get-Content $nsiPath -Raw
-          
-          # Buscar el bloque de instalación y añadir el compilador después del exe
-          $inject = "`r`n  ; WinLibs (compilador bundleado)`r`n  SetOutPath `"`$INSTDIR\compiler`"`r`n  File /r `"`${BUILD_DIR}\compiler\*`"`r`n"
-          $content  = $content -replace '(File "\${BUILD_DIR}\\[^"]+\.exe")', "`$1$inject"
-          
-          Set-Content $nsiPath $content
+          move build\bin\compiler\mingw64 build\bin\compiler\toolchain
 
-      - name: Build Windows EXE + NSIS Installer
-        run: wails build -platform windows/amd64 -nsis -o Flint.exe
+      - name: Build Wails App
+        run: wails build -platform windows/amd64 -o Flint.exe
 
-      - uses: actions/upload-artifact@v4
+      - name: Prepare MSI structure
+        run: |
+          mkdir dist
+          xcopy build\bin\Flint.exe dist\ /Y
+          xcopy build\bin\compiler\toolchain\bin dist\compiler\bin\ /E /I /Y
+
+      - name: Generate file list for WiX
+        run: |
+          dir dist\compiler\bin /b > files.txt
+
+      - name: Create WiX source
+        run: |
+          echo ^<?xml version="1.0" encoding="UTF-8"?^> > installer.wxs
+          echo ^<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi"^> >> installer.wxs
+          echo   ^<Product Id="*" Name="Flint" Language="1033" Version="1.0.0" Manufacturer="Flint" UpgradeCode="EEE4B5AC-3E88-4109-9B1E-10C81E08AAEB"^> >> installer.wxs
+          echo     ^<Package InstallerVersion="500" Compressed="yes" InstallScope="perMachine" /^> >> installer.wxs
+          echo     ^<MediaTemplate /^> >> installer.wxs
+
+          echo     ^<Feature Id="MainFeature" Title="Flint" Level="1"^> >> installer.wxs
+          echo       ^<ComponentGroupRef Id="AppFiles" /^> >> installer.wxs
+          echo     ^</Feature^> >> installer.wxs
+
+          echo     ^<Directory Id="TARGETDIR" Name="SourceDir"^> >> installer.wxs
+          echo       ^<Directory Id="ProgramFilesFolder"^> >> installer.wxs
+          echo         ^<Directory Id="INSTALLDIR" Name="Flint"^> >> installer.wxs
+          echo           ^<Directory Id="COMPILERDIR" Name="compiler"^> >> installer.wxs
+          echo             ^<Directory Id="BINDIR" Name="bin" /^> >> installer.wxs
+          echo           ^</Directory^> >> installer.wxs
+          echo         ^</Directory^> >> installer.wxs
+          echo       ^</Directory^> >> installer.wxs
+          echo     ^</Directory^> >> installer.wxs
+
+          echo     ^<DirectoryRef Id="INSTALLDIR"^> >> installer.wxs
+          echo       ^<Component Id="MainExe" Guid="*"^> >> installer.wxs
+          echo         ^<File Source="dist\\Flint.exe" /^> >> installer.wxs
+          echo       ^</Component^> >> installer.wxs
+          echo     ^</DirectoryRef^> >> installer.wxs
+
+          echo     ^<DirectoryRef Id="BINDIR"^> >> installer.wxs
+
+          for /f %%i in (files.txt) do (
+            echo       ^<Component Id="cmp_%%~ni" Guid="*"^> >> installer.wxs
+            echo         ^<File Source="dist\\compiler\\bin\\%%i" /^> >> installer.wxs
+            echo       ^</Component^> >> installer.wxs
+          )
+
+          echo     ^</DirectoryRef^> >> installer.wxs
+
+          echo     ^<ComponentGroup Id="AppFiles"^> >> installer.wxs
+          echo       ^<ComponentRef Id="MainExe" /^> >> installer.wxs
+
+          for /f %%i in (files.txt) do (
+            echo       ^<ComponentRef Id="cmp_%%~ni" /^> >> installer.wxs
+          )
+
+          echo     ^</ComponentGroup^> >> installer.wxs
+
+          echo     ^<DirectoryRef Id="INSTALLDIR"^> >> installer.wxs
+          echo       ^<Component Id="EnvPath" Guid="*"^> >> installer.wxs
+          echo         ^<Environment Id="PATH_VAR" Name="PATH" Value="[INSTALLDIR]compiler\\bin" Permanent="no" Part="last" Action="set" /^> >> installer.wxs
+          echo       ^</Component^> >> installer.wxs
+          echo     ^</DirectoryRef^> >> installer.wxs
+
+          echo   ^</Product^> >> installer.wxs
+          echo ^</Wix^> >> installer.wxs
+
+      - name: Build MSI
+        run: |
+          candle installer.wxs
+          light installer.wixobj -o Flint.msi
+
+      - uses: softprops/action-gh-release@v2
         with:
-          name: Flint-Windows
-          path: build/bin/*.exe
+          files: Flint.msi
 
   build-linux:
-    name: Build Linux (x64)
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.21'
+          go-version: '1.23'
+
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libgtk-3-dev libwebkit2gtk-4.0-dev \
-            build-essential pkg-config \
-            ruby ruby-dev rubygems
-          sudo gem install fpm
+      - run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
 
-      - name: Install Wails
-        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+      - run: wails build -platform linux/amd64
 
-      - name: Build Linux Binary
-        run: wails build -platform linux/amd64 -o Flint
-
-      - name: Get version from tag
-        id: get_version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
-
-      - name: Package (tar.gz + deb + rpm)
-        run: |
-          cd build/bin
-          tar -czvf Flint-Linux-x64-Portable.tar.gz Flint
-          fpm -s dir -t deb -n flint \
-            -v ${{ steps.get_version.outputs.VERSION }} \
-            --prefix /usr/local/bin Flint
-          fpm -s dir -t rpm -n flint \
-            -v ${{ steps.get_version.outputs.VERSION }} \
-            --prefix /usr/local/bin Flint
-
-      - uses: actions/upload-artifact@v4
+      - uses: softprops/action-gh-release@v2
         with:
-          name: Flint-Linux
-          path: |
-            build/bin/*.tar.gz
-            build/bin/*.deb
-            build/bin/*.rpm
+          files: build/bin/*
 
-  release:
-    name: Publish GitHub Release
-    needs: [build-macos, build-windows, build-linux]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    if: startsWith(github.ref, 'refs/tags/')
+  build-macos:
+    runs-on: macos-latest
+
     steps:
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts
+      - uses: actions/checkout@v4
 
-      - name: Flatten structure
-        run: |
-          mkdir -p release_assets
-          find artifacts -type f -exec mv {} release_assets/ \;
-
-      - name: Publish Release
-        uses: softprops/action-gh-release@v2
+      - uses: actions/setup-go@v5
         with:
-          files: release_assets/*
-          generate_release_notes: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          go-version: '1.23'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+
+      - run: wails build -platform darwin/universal
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: build/bin/*
