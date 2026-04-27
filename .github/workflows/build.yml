@@ -29,10 +29,19 @@ jobs:
       - name: Install WiX
         run: choco install wixtoolset -y
 
-      - name: Download WinLibs
+      - name: Download WinLibs (robust)
+        shell: powershell
         run: |
-          curl -L -o winlibs.zip https://github.com/brechtsanders/winlibs_mingw/releases/latest/download/winlibs-x86_64-posix-seh-gcc.zip
-          powershell -Command "Expand-Archive winlibs.zip -DestinationPath build/bin/compiler"
+          Invoke-WebRequest -Uri "https://github.com/brechtsanders/winlibs_mingw/releases/latest/download/winlibs-x86_64-posix-seh-gcc.zip" -OutFile "winlibs.zip"
+          Expand-Archive winlibs.zip -DestinationPath build/bin/compiler
+
+          $dirs = Get-ChildItem build\bin\compiler -Directory
+          if ($dirs.Count -eq 0) {
+            Write-Error "WinLibs extraction failed"
+            exit 1
+          }
+
+          Move-Item $dirs[0].FullName build\bin\compiler\toolchain
 
       - name: Normalize toolchain
         shell: powershell
@@ -112,7 +121,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             libgtk-3-dev \
-            libwebkit2gtk-4.0-dev \
+            libwebkit2gtk-4.1-dev \
             libglib2.0-dev \
             build-essential
 
